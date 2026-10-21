@@ -1,0 +1,106 @@
+# Databricks Asset Bundle: deploys the wheel + a scheduled Workflow (job).
+#   databricks bundle validate
+#   databricks bundle deploy -t dev
+#   databricks bundle run daily_lakehouse -t dev
+bundle:
+  name: lakehouse_databricks
+
+sync:
+  exclude:
+    - .venv*
+    - venv*
+
+artifacts:
+  lakehouse_whl:
+    type: whl
+    build: python -m build --wheel
+    path: .
+
+variables:
+  catalog:
+    default: workspace
+  schema:
+    default: lakehouse
+  schedule_status:
+    default: PAUSED
+
+resources:
+  jobs:
+    daily_lakehouse:
+      name: daily-lakehouse-${bundle.target}
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"   # every day 02:00
+        timezone_id: Africa/Nairobi
+        pause_status: ${var.schedule_status}
+
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ./dist/*.whl
+
+      tasks:
+        - task_key: setup
+          environment_key: serverless
+          python_wheel_task:
+            package_name: lakehouse_spark
+            entry_point: setup
+            named_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+
+        - task_key: bronze
+          depends_on: [{task_key: setup}]
+          environment_key: serverless
+          max_retries: 2                          # transient cloud/storage errors only
+          min_retry_interval_millis: 30000
+          python_wheel_task:
+            package_name: lakehouse_spark
+            entry_point: bronze
+            named_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+
+        - task_key: silver
+          depends_on: [{task_key: bronze}]
+          environment_key: serverless
+          python_wheel_task:
+            package_name: lakehouse_spark
+            entry_point: silver
+            named_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+
+        - task_key: dq_silver                     # gate: failure stops gold
+          depends_on: [{task_key: silver}]
+          environment_key: serverless
+          python_wheel_task:
+            package_name: lakehouse_spark
+            entry_point: dq
+            named_parameters: {catalog: "${var.catalog}", schema: "${var.schema}", layer: silver}
+
+        - task_key: gold
+          depends_on: [{task_key: dq_silver}]
+          environment_key: serverless
+          python_wheel_task:
+            package_name: lakehouse_spark
+            entry_point: gold
+            named_parameters: {catalog: "${var.catalog}", schema: "${var.schema}"}
+
+        - task_key: dq_gold
+          depends_on: [{task_key: gold}]
+          environment_key: serverless
+          python_wheel_task:
+            package_name: lakehouse_spark
+            entry_point: dq
+            named_parameters: {catalog: "${var.catalog}", schema: "${var.schema}", layer: gold}
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-32232587-4438.cloud.databricks.com
+  prod:
+    mode: production
+    variables:
+      schedule_status: UNPAUSED
+    workspace:
+      host: https://dbc-32232587-4438.cloud.databricks.com # <- replace
+      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}

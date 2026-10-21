@@ -1,0 +1,24 @@
+# Python environments and generated files
+**/.venv*/
+**/venv*/
+**/__pycache__/
+**/.pytest_cache/
+*.py[cod]
+.coverage
+htmlcov/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Publish only the curated, sanitized screenshots
+/screenshots/*
+!/screenshots/public/
+!/screenshots/public/**

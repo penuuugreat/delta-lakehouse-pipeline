@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lakehouse_spark"
+version = "0.1.0"
+description = "Medallion lakehouse on Databricks: Auto Loader, Structured Streaming, Delta MERGE, CDF"
+requires-python = ">=3.10"
+dependencies = []          # pyspark + delta are provided by the Databricks runtime
+
+[project.optional-dependencies]
+dev = ["pyspark==3.5.3", "delta-spark==3.2.0", "pandas", "pytest", "build"]
+
+# entry points referenced by python_wheel_task in databricks.yml
+[project.scripts]
+setup  = "lakehouse_spark.jobs:setup_main"
+bronze = "lakehouse_spark.jobs:bronze_main"
+silver = "lakehouse_spark.jobs:silver_main"
+gold   = "lakehouse_spark.jobs:gold_main"
+dq     = "lakehouse_spark.jobs:dq_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
